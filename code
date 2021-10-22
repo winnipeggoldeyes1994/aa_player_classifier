@@ -84,9 +84,7 @@ read_html(str_c("https://www.baseball-reference.com/register/player.fcgi?id=", b
 #CLASSIFY PITCHER
 read_html(str_c("https://www.baseball-reference.com/register/player.fcgi?id=", pitcher_ID, sep = "")) %>% 
   html_table() %>% 
-  as.data.frame()-> test_pitcher
-
-test_pitcher %>% 
+  as.data.frame() %>%
   tibble() %>%
   mutate(Year = as.integer(Year),
          Age = as.numeric(Age),
