@@ -2,71 +2,81 @@ library(tidyverse)
 library(stringr)
 library(rvest)
 
-#12-DIGIT BASEBALL-REFERENCE ID (MINOR LEAGUE SIDE)
-batter_ID <- "lachan000kev"
-pitcher_ID <- "schwin000pau"
-
 #CLASSIFY HITTER
-read_html(str_c("https://www.baseball-reference.com/register/player.fcgi?id=", batter_ID, sep = "")) %>% 
+read_html("https://www.baseball-reference.com/register/player.fcgi?id=heyman000gra") %>% 
   html_table() %>% 
   as.data.frame() %>% 
-  tibble() %>%
-  mutate(Year = as.integer(Year),
+  select(Year, Age, Tm, Lg, Lev, AB) %>% 
+  tibble() %>% 
+  mutate(Year = as.numeric(Year),
          Age = as.numeric(Age),
          AB = as.numeric(AB)) %>% 
-  filter(as.integer(Year) >= 1 & str_detect(Tm, "Teams") == FALSE,
+  filter(!str_detect(Year, "-"),
+         Year >= 1 & str_detect(Tm, "Teams") == FALSE,
          !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ"),
-         !Lg %in% c("PACA", "PECO", "USBL"),
-         !(Lev == "Ind" & Year == 2020)) %>% 
-  select(Year:Age, Tm:Lev, AB) %>% 
-  mutate(short = case_when(Lev %in% c("FRk", "Rk", "A-") ~ as.numeric(1),
-                           TRUE ~ as.numeric(0)),
-         full = case_when(Lev %in% c("A", "A+", "AA", "AAA", "Maj") ~ as.numeric(1),
+         !Lg %in% c("PACA", "PECO", "USBL")) %>% 
+  mutate(Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") ~ "full",
+                          Lev %in% c("A-", "Rk", "FRk") ~ "short",
+                          Lev == "Ind" ~ "ind",
+                          TRUE ~ "NQ")) %>% 
+  pivot_wider(names_from = Tier, names_prefix = "AB_", values_from = AB) %>% 
+  mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") ~ as.numeric(1),
                           TRUE ~ as.numeric(0)),
-         independent = case_when(Lev == "Ind" ~ as.numeric(1),
-                                 TRUE ~ as.numeric(0))) %>% 
-  group_by(Year, short, full, independent) %>% 
+         short = case_when(Lev %in% c("A-", "Rk", "FRk") ~ as.numeric(1),
+                           TRUE ~ as.numeric(0)),
+         ind = case_when(Lev == "Ind" ~ as.numeric(1),
+                         TRUE ~ as.numeric(0))) %>% 
+  group_by(Year, full, short, ind) %>% 
   summarize(Age = mean(Age),
-            AB = sum(AB),
-            short = sum(short),
+            AB_full = sum(AB_full),
+            AB_short = sum(AB_short),
+            AB_ind = sum(AB_ind),
             full = sum(full),
-            independent = sum(independent)) %>% 
-  mutate(short = replace_na(short, 0),
-         full = replace_na(full, 0),
-         independent = replace_na(independent, 0)) %>% 
-  mutate(short = case_when(short >= 1 & AB >= 75 ~ 1,
-                           TRUE ~ 0),
-         full = case_when(full >= 1 & AB >= 75 ~ 1,
+            short = sum(short),
+            ind = sum(ind)) %>% 
+  mutate(full = replace_na(full, 0),
+         short = replace_na(short, 0),
+         ind = replace_na(ind, 0),
+         AB_full = replace_na(AB_full, 0),
+         AB_short = replace_na(AB_short, 0),
+         AB_ind = replace_na(AB_ind, 0)) %>% 
+  mutate(full = case_when(full >= 1 & AB_full >= 75 ~ 1,
                           TRUE ~ 0),
-         independent = case_when(independent >= 1 & AB >= 75 ~ 1,
-                                 TRUE ~ 0)) %>% 
+         short = case_when(short >= 1 & AB_short >= 75 ~ 1,
+                           TRUE ~ 0),
+         ind = case_when(ind >= 1 & AB_ind >= 75 & Year != 2020 ~ 1,
+                         TRUE ~ 0)) %>% 
   group_by(Year) %>% 
   summarize(Age = mean(Age),
-            AB = sum(AB),
-            short = sum(short),
+            AB_full = sum(AB_full),
+            AB_short = sum(AB_short),
+            AB_ind = sum(AB_ind),
             full = sum(full),
-            independent = sum(independent)) %>% 
+            short = sum(short),
+            ind = sum(ind)) %>% 
   mutate(full_count = case_when(full >= 1 ~ 1,
                                 TRUE ~ 0),
-         short_count = case_when((short >= 1 & full < 1 & cumsum(short) <= 1) | (short >= 1 & independent < 1 & cumsum(short) <= 1) ~ 0,
-                                 (short >= 1 & full < 1 & cumsum(short) >= 2) | (short >= 1 & independent < 1 & cumsum(short) >= 2) ~ 1,
+         short_count = case_when((short >= 1 & full < 1 & cumsum(short) <= 1) | (short >= 1 & ind < 1 & cumsum(short) <= 1) ~ 0,
+                                 (short >= 1 & full < 1 & cumsum(short) >= 2) | (short >= 1 & ind < 1 & cumsum(short) >= 2) ~ 1,
                                  TRUE ~ 0),
-         independent_count = case_when(independent >= 1 & (short + full) < 1 & cumsum(independent) <= 1 ~ 0,
-                                       independent >= 1 & (short + full) < 1 & cumsum(independent) >= 2 ~ 1,
-                                       TRUE ~ 0),
+         ind_count = case_when(ind >= 1 & (short + full) < 1 & cumsum(ind) <= 1 ~ 0,
+                               ind >= 1 & (short + full) < 1 & cumsum(ind) >= 2 ~ 1,
+                               TRUE ~ 0),
+         aff_combined = case_when(full < 1 & short < 1 & cumsum(short) >= 2 & (AB_full + AB_short) >= 75 ~ 1,
+                                  TRUE ~ 0),
          year_count = row_number()) %>% 
-  mutate(service_year = case_when((full_count + short_count + independent_count) >= 1 ~ 1,
+  mutate(service_year = case_when((full_count + short_count + ind_count + aff_combined) >= 1 ~ 1,
                                   TRUE ~ 0),
          service_time = lag(cumsum(service_year)),
-         classification = case_when(service_time <= 0 ~ "R",
-                                    service_time == 1 ~ "1",
-                                    service_time == 2 ~ "2",
-                                    service_time == 3 ~ "3",
-                                    service_time == 4 ~ "4",
-                                    service_time == 5 ~ "5",
-                                    service_time >= 6 ~ "V")) %>% 
-  mutate(classification = case_when((classification == "V" | classification == "5") & Age <= 26 ~ "4",
-                                    TRUE ~ classification),
+         class = case_when(service_time <= 0 ~ "R",
+                           service_time == 1 ~ "1",
+                           service_time == 2 ~ "2",
+                           service_time == 3 ~ "3",
+                           service_time == 4 ~ "4",
+                           service_time == 5 ~ "5",
+                           service_time >= 6 ~ "V")) %>% 
+  mutate(class = case_when((class == "V" | class == "5") & Age <= 26 ~ "4",
+                           TRUE ~ class),
          next_season_time = cumsum(service_year),
          next_season_class = case_when(next_season_time <= 0 ~ "R",
                                        next_season_time == 1 ~ "1",
@@ -77,71 +87,87 @@ read_html(str_c("https://www.baseball-reference.com/register/player.fcgi?id=", b
                                        next_season_time >= 6 ~ "V")) %>% 
   mutate(next_season_class = case_when((next_season_class == "V" | next_season_class == "5") & Age <= 25 ~ "4",
                                        TRUE ~ next_season_class)) %>% 
-  select(year_count, Year, Age, full_count, short_count, independent_count,
-         service_year, service_time, classification, next_season_time, next_season_class)
+  select(year_count, Year, Age, AB_full, AB_short, AB_ind, full_count, short_count, ind_count,
+         service_year, service_time, class, next_season_time, next_season_class)
 
 
 #CLASSIFY PITCHER
-read_html(str_c("https://www.baseball-reference.com/register/player.fcgi?id=", pitcher_ID, sep = "")) %>% 
+read_html("https://www.baseball-reference.com/register/player.fcgi?id=lambso000mit") %>% 
   html_table() %>% 
-  as.data.frame() %>%
-  tibble() %>%
-  mutate(Year = as.integer(Year),
-         Age = as.numeric(Age),
-         IP = as.numeric(IP)) %>% 
-  filter(as.integer(Year) >= 1 & str_detect(Tm, "Teams") == FALSE,
+  as.data.frame() %>% 
+  select(Year, Age, Tm, Lg, Lev, IP) %>% 
+  tibble() %>% 
+  mutate(Year = as.numeric(Year),
+         Age = as.numeric(Age)) %>% 
+  filter(!str_detect(Year, "-"),
+         Year >= 1 & str_detect(Tm, "Teams") == FALSE,
          !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ"),
-         !Lg %in% c("PACA", "PECO", "USBL"),
-         !(Lev == "Ind" & Year == 2020)) %>% 
-  select(Year:Age, Tm:Lev, IP) %>% 
-  mutate(short = case_when(Lev %in% c("FRk", "Rk", "A-") ~ as.numeric(1),
-                           TRUE ~ as.numeric(0)),
-         full = case_when(Lev %in% c("A", "A+", "AA", "AAA", "Maj") ~ as.numeric(1),
+         !Lg %in% c("PACA", "PECO", "USBL")) %>% 
+  mutate(IP = str_replace(IP, DOT %R% "1", DOT %R% "33"),
+         IP = str_replace(IP, DOT %R% "2", DOT %R% "67"),
+         IP = as.numeric(IP),
+         Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") ~ "full",
+                          Lev %in% c("A-", "Rk", "FRk") ~ "short",
+                          Lev == "Ind" ~ "ind",
+                          TRUE ~ "NQ")) %>% 
+  pivot_wider(names_from = Tier, names_prefix = "IP_", values_from = IP) %>% 
+  mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") ~ as.numeric(1),
                           TRUE ~ as.numeric(0)),
-         independent = case_when(Lev == "Ind" ~ as.numeric(1),
-                                 TRUE ~ as.numeric(0))) %>% 
-  group_by(Year, short, full, independent) %>% 
+         short = case_when(Lev %in% c("A-", "Rk", "FRk") ~ as.numeric(1),
+                           TRUE ~ as.numeric(0)),
+         ind = case_when(Lev == "Ind" ~ as.numeric(1),
+                         TRUE ~ as.numeric(0))) %>% 
+  group_by(Year, full, short, ind) %>% 
   summarize(Age = mean(Age),
-            IP = sum(IP),
-            short = sum(short),
+            IP_full = sum(IP_full),
+            IP_short = sum(IP_short),
+            IP_ind = sum(IP_ind),
             full = sum(full),
-            independent = sum(independent)) %>% 
-  mutate(short = replace_na(short, 0),
-         full = replace_na(full, 0),
-         independent = replace_na(independent, 0)) %>% 
-  mutate(short = case_when(short >= 1 & IP >= 30 ~ 1,
-                           TRUE ~ 0),
-         full = case_when(full >= 1 & IP >= 30 ~ 1,
+            short = sum(short),
+            ind = sum(ind)) %>% 
+  mutate(full = replace_na(full, 0),
+         short = replace_na(short, 0),
+         ind = replace_na(ind, 0),
+         IP_full = replace_na(IP_full, 0),
+         IP_short = replace_na(IP_short, 0),
+         IP_ind = replace_na(IP_ind, 0)) %>% 
+  mutate(full = case_when(full >= 1 & IP_full >= 30 ~ 1,
                           TRUE ~ 0),
-         independent = case_when(independent >= 1 & IP >= 30 ~ 1,
-                                 TRUE ~ 0)) %>% 
+         short = case_when(short >= 1 & IP_short >= 30 ~ 1,
+                           TRUE ~ 0),
+         ind = case_when(ind >= 1 & IP_ind >= 30 & Year != 2020 ~ 1,
+                         TRUE ~ 0)) %>% 
   group_by(Year) %>% 
   summarize(Age = mean(Age),
-            IP = sum(IP),
-            short = sum(short),
+            IP_full = sum(IP_full),
+            IP_short = sum(IP_short),
+            IP_ind = sum(IP_ind),
             full = sum(full),
-            independent = sum(independent)) %>% 
+            short = sum(short),
+            ind = sum(ind)) %>% 
   mutate(full_count = case_when(full >= 1 ~ 1,
                                 TRUE ~ 0),
-         short_count = case_when((short >= 1 & full < 1 & cumsum(short) <= 1) | (short >= 1 & independent < 1 & cumsum(short) <= 1) ~ 0,
-                                 (short >= 1 & full < 1 & cumsum(short) >= 2) | (short >= 1 & independent < 1 & cumsum(short) >= 2) ~ 1,
+         short_count = case_when((short >= 1 & full < 1 & cumsum(short) <= 1) | (short >= 1 & ind < 1 & cumsum(short) <= 1) ~ 0,
+                                 (short >= 1 & full < 1 & cumsum(short) >= 2) | (short >= 1 & ind < 1 & cumsum(short) >= 2) ~ 1,
                                  TRUE ~ 0),
-         independent_count = case_when(independent >= 1 & (short + full) < 1 & cumsum(independent) <= 1 ~ 0,
-                                       independent >= 1 & (short + full) < 1 & cumsum(independent) >= 2 ~ 1,
-                                       TRUE ~ 0),
+         ind_count = case_when(ind >= 1 & (short + full) < 1 & cumsum(ind) <= 1 ~ 0,
+                               ind >= 1 & (short + full) < 1 & cumsum(ind) >= 2 ~ 1,
+                               TRUE ~ 0),
+         aff_combined = case_when(full < 1 & short < 1 & cumsum(short) >= 2 & (IP_full + IP_short) >= 30 ~ 1,
+                                  TRUE ~ 0),
          year_count = row_number()) %>% 
-  mutate(service_year = case_when((full_count + short_count + independent_count) >= 1 ~ 1,
+  mutate(service_year = case_when((full_count + short_count + ind_count + aff_combined) >= 1 ~ 1,
                                   TRUE ~ 0),
          service_time = lag(cumsum(service_year)),
-         classification = case_when(service_time <= 0 ~ "R",
-                                    service_time == 1 ~ "1",
-                                    service_time == 2 ~ "2",
-                                    service_time == 3 ~ "3",
-                                    service_time == 4 ~ "4",
-                                    service_time == 5 ~ "5",
-                                    service_time >= 6 ~ "V")) %>% 
-  mutate(classification = case_when((classification == "V" | classification == "5") & Age <= 26 ~ "4",
-                                    TRUE ~ classification),
+         class = case_when(service_time <= 0 ~ "R",
+                           service_time == 1 ~ "1",
+                           service_time == 2 ~ "2",
+                           service_time == 3 ~ "3",
+                           service_time == 4 ~ "4",
+                           service_time == 5 ~ "5",
+                           service_time >= 6 ~ "V")) %>% 
+  mutate(class = case_when((class == "V" | class == "5") & Age <= 26 ~ "4",
+                           TRUE ~ class),
          next_season_time = cumsum(service_year),
          next_season_class = case_when(next_season_time <= 0 ~ "R",
                                        next_season_time == 1 ~ "1",
@@ -152,5 +178,5 @@ read_html(str_c("https://www.baseball-reference.com/register/player.fcgi?id=", p
                                        next_season_time >= 6 ~ "V")) %>% 
   mutate(next_season_class = case_when((next_season_class == "V" | next_season_class == "5") & Age <= 25 ~ "4",
                                        TRUE ~ next_season_class)) %>% 
-  select(year_count, Year, Age, full_count, short_count, independent_count,
-         service_year, service_time, classification, next_season_time, next_season_class)
+  select(year_count, Year, Age, IP_full, IP_short, IP_ind, full_count, short_count, ind_count,
+         service_year, service_time, class, next_season_time, next_season_class)
