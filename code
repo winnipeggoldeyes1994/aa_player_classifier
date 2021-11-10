@@ -3,11 +3,11 @@ library(stringr)
 library(rvest)
 
 #CLASSIFY HITTER
-read_html("https://www.baseball-reference.com/register/player.fcgi?id=heyman000gra") %>% 
+read_html("") %>% 
   html_table() %>% 
   as.data.frame() %>% 
-  select(Year, Age, Tm, Lg, Lev, AB) %>% 
   tibble() %>% 
+  select(Year, Age, Tm, Lg, Lev, AB) %>% 
   mutate(Year = as.numeric(Year),
          Age = as.numeric(Age),
          AB = as.numeric(AB)) %>% 
@@ -19,7 +19,11 @@ read_html("https://www.baseball-reference.com/register/player.fcgi?id=heyman000g
                           Lev %in% c("A-", "Rk", "FRk") ~ "short",
                           Lev == "Ind" ~ "ind",
                           TRUE ~ "NQ")) %>% 
+  add_row(Tier = "full") %>% 
+  add_row(Tier = "short") %>% 
+  add_row(Tier = "ind") %>% 
   pivot_wider(names_from = Tier, names_prefix = "AB_", values_from = AB) %>% 
+  filter(Year >= 1) %>% 
   mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") ~ as.numeric(1),
                           TRUE ~ as.numeric(0)),
          short = case_when(Lev %in% c("A-", "Rk", "FRk") ~ as.numeric(1),
@@ -87,16 +91,16 @@ read_html("https://www.baseball-reference.com/register/player.fcgi?id=heyman000g
                                        next_season_time >= 6 ~ "V")) %>% 
   mutate(next_season_class = case_when((next_season_class == "V" | next_season_class == "5") & Age <= 25 ~ "4",
                                        TRUE ~ next_season_class)) %>% 
-  select(year_count, Year, Age, AB_full, AB_short, AB_ind, full_count, short_count, ind_count,
+  select(year_count, Year, Age, AB_full, AB_short, AB_ind, full_count, short_count, aff_combined, ind_count,
          service_year, service_time, class, next_season_time, next_season_class)
 
 
 #CLASSIFY PITCHER
-read_html("https://www.baseball-reference.com/register/player.fcgi?id=lambso000mit") %>% 
+read_html("") %>% 
   html_table() %>% 
   as.data.frame() %>% 
-  select(Year, Age, Tm, Lg, Lev, IP) %>% 
   tibble() %>% 
+  select(Year, Age, Tm, Lg, Lev, IP) %>% 
   mutate(Year = as.numeric(Year),
          Age = as.numeric(Age)) %>% 
   filter(!str_detect(Year, "-"),
@@ -110,7 +114,11 @@ read_html("https://www.baseball-reference.com/register/player.fcgi?id=lambso000m
                           Lev %in% c("A-", "Rk", "FRk") ~ "short",
                           Lev == "Ind" ~ "ind",
                           TRUE ~ "NQ")) %>% 
+  add_row(Tier = "full") %>% 
+  add_row(Tier = "short") %>% 
+  add_row(Tier = "ind") %>% 
   pivot_wider(names_from = Tier, names_prefix = "IP_", values_from = IP) %>% 
+  filter(Year >= 1) %>% 
   mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") ~ as.numeric(1),
                           TRUE ~ as.numeric(0)),
          short = case_when(Lev %in% c("A-", "Rk", "FRk") ~ as.numeric(1),
@@ -178,5 +186,5 @@ read_html("https://www.baseball-reference.com/register/player.fcgi?id=lambso000m
                                        next_season_time >= 6 ~ "V")) %>% 
   mutate(next_season_class = case_when((next_season_class == "V" | next_season_class == "5") & Age <= 25 ~ "4",
                                        TRUE ~ next_season_class)) %>% 
-  select(year_count, Year, Age, IP_full, IP_short, IP_ind, full_count, short_count, ind_count,
+  select(year_count, Year, Age, IP_full, IP_short, IP_ind, full_count, short_count, aff_combined, ind_count,
          service_year, service_time, class, next_season_time, next_season_class)
