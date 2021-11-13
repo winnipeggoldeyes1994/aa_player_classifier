@@ -14,7 +14,7 @@ read_html("") %>%
   filter(!str_detect(Year, "-"),
          Year >= 1 & str_detect(Tm, "Teams") == FALSE,
          !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ")) %>% 
-  mutate(Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") |
+  mutate(Tier = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") |
                             Lg %in% c("JPCL", "JPPL", "JPEL", "JPWL", "KBO", "CPBL", "CNS") ~ "full",
                           Lev %in% c("A-", "Rk", "FRk") ~ "short",
                           Lev == "Ind" ~ "ind",
@@ -112,7 +112,7 @@ read_html("") %>%
   mutate(IP = str_replace(IP, DOT %R% "1", DOT %R% "33"),
          IP = str_replace(IP, DOT %R% "2", DOT %R% "67"),
          IP = as.numeric(IP),
-         Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") |
+         Tier = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") |
                             Lg %in% c("JPCL", "JPPL", "JPEL", "JPWL", "KBO", "CPBL", "CNS") ~ "full",
                           Lev %in% c("A-", "Rk", "FRk") ~ "short",
                           Lev == "Ind" ~ "ind",
