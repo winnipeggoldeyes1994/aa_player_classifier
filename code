@@ -1,5 +1,4 @@
 library(tidyverse)
-library(stringr)
 library(rvest)
 
 #CLASSIFY HITTER
@@ -8,14 +7,15 @@ read_html("") %>%
   as.data.frame() %>% 
   tibble() %>% 
   select(Year, Age, Tm, Lg, Lev, AB) %>% 
-  mutate(Year = as.numeric(Year),
+  mutate(Year = if_else(Lg == "CNS", str_remove(Year, DGT %R% DGT %R% "-"), Year),
+         Year = as.numeric(Year),
          Age = as.numeric(Age),
          AB = as.numeric(AB)) %>% 
   filter(!str_detect(Year, "-"),
          Year >= 1 & str_detect(Tm, "Teams") == FALSE,
-         !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ"),
-         !Lg %in% c("PACA", "PECO", "USBL")) %>% 
-  mutate(Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") ~ "full",
+         !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ")) %>% 
+  mutate(Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") |
+                            Lg %in% c("JPCL", "JPPL", "JPEL", "JPWL", "KBO", "CPBL", "CNS") ~ "full",
                           Lev %in% c("A-", "Rk", "FRk") ~ "short",
                           Lev == "Ind" ~ "ind",
                           TRUE ~ "NQ")) %>% 
@@ -24,11 +24,12 @@ read_html("") %>%
   add_row(Tier = "ind") %>% 
   pivot_wider(names_from = Tier, names_prefix = "AB_", values_from = AB) %>% 
   filter(Year >= 1) %>% 
-  mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") ~ as.numeric(1),
+  mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") |
+                            Lg %in% c("JPCL", "JPPL", "JPEL", "JPWL", "KBO", "CPBL", "CNS") ~ as.numeric(1),
                           TRUE ~ as.numeric(0)),
          short = case_when(Lev %in% c("A-", "Rk", "FRk") ~ as.numeric(1),
                            TRUE ~ as.numeric(0)),
-         ind = case_when(Lev == "Ind" ~ as.numeric(1),
+         ind = case_when(Lev == "Ind" & !Lg %in% c("PACA", "PECO", "USBL") ~ as.numeric(1),
                          TRUE ~ as.numeric(0))) %>% 
   group_by(Year, full, short, ind) %>% 
   summarize(Age = mean(Age),
@@ -92,7 +93,8 @@ read_html("") %>%
   mutate(next_season_class = case_when((next_season_class == "V" | next_season_class == "5") & Age <= 25 ~ "4",
                                        TRUE ~ next_season_class)) %>% 
   select(year_count, Year, Age, AB_full, AB_short, AB_ind, full_count, short_count, aff_combined, ind_count,
-         service_year, service_time, class, next_season_time, next_season_class)
+         service_year, service_time, class, next_season_time, next_season_class) %>% 
+  mutate(TRUE_R = if_else(is.na(class), "YES", NULL))
 
 
 #CLASSIFY PITCHER
@@ -101,16 +103,17 @@ read_html("") %>%
   as.data.frame() %>% 
   tibble() %>% 
   select(Year, Age, Tm, Lg, Lev, IP) %>% 
-  mutate(Year = as.numeric(Year),
+  mutate(Year = if_else(Lg == "CNS", str_remove(Year, DGT %R% DGT %R% "-"), Year),
+         Year = as.numeric(Year),
          Age = as.numeric(Age)) %>% 
   filter(!str_detect(Year, "-"),
          Year >= 1 & str_detect(Tm, "Teams") == FALSE,
-         !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ"),
-         !Lg %in% c("PACA", "PECO", "USBL")) %>% 
+         !Lev %in% c("Fal", "NCAA", "NAIA", "Smr", "Summ")) %>% 
   mutate(IP = str_replace(IP, DOT %R% "1", DOT %R% "33"),
          IP = str_replace(IP, DOT %R% "2", DOT %R% "67"),
          IP = as.numeric(IP),
-         Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") ~ "full",
+         Tier = case_when(Lev %in% c("AAA", "AA", "A+", "A") |
+                            Lg %in% c("JPCL", "JPPL", "JPEL", "JPWL", "KBO", "CPBL", "CNS") ~ "full",
                           Lev %in% c("A-", "Rk", "FRk") ~ "short",
                           Lev == "Ind" ~ "ind",
                           TRUE ~ "NQ")) %>% 
@@ -119,11 +122,12 @@ read_html("") %>%
   add_row(Tier = "ind") %>% 
   pivot_wider(names_from = Tier, names_prefix = "IP_", values_from = IP) %>% 
   filter(Year >= 1) %>% 
-  mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") ~ as.numeric(1),
+  mutate(full = case_when(Lev %in% c("Maj", "AAA", "AA", "A+", "A") |
+                            Lg %in% c("JPCL", "JPPL", "JPEL", "JPWL", "KBO", "CPBL", "CNS") ~ as.numeric(1),
                           TRUE ~ as.numeric(0)),
          short = case_when(Lev %in% c("A-", "Rk", "FRk") ~ as.numeric(1),
                            TRUE ~ as.numeric(0)),
-         ind = case_when(Lev == "Ind" ~ as.numeric(1),
+         ind = case_when(Lev == "Ind" & !Lg %in% c("PACA", "PECO", "USBL") ~ as.numeric(1),
                          TRUE ~ as.numeric(0))) %>% 
   group_by(Year, full, short, ind) %>% 
   summarize(Age = mean(Age),
@@ -187,4 +191,5 @@ read_html("") %>%
   mutate(next_season_class = case_when((next_season_class == "V" | next_season_class == "5") & Age <= 25 ~ "4",
                                        TRUE ~ next_season_class)) %>% 
   select(year_count, Year, Age, IP_full, IP_short, IP_ind, full_count, short_count, aff_combined, ind_count,
-         service_year, service_time, class, next_season_time, next_season_class)
+         service_year, service_time, class, next_season_time, next_season_class) %>% 
+  mutate(TRUE_R = if_else(is.na(class), "YES", NULL))
